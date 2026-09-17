@@ -285,30 +285,61 @@ export function useMatchStore() {
    */
   const joinMatchByDeepLink = async (startParam: string): Promise<Match | null> => {
     const activeUser = await syncUserToSupabase(currentUser);
-    const rawId = startParam.replace(/^(match_|match-)+/, '').trim();
-    if (!rawId) return null;
+    const rawId = startParam ? startParam.replace(/^(match_|match-)+/, '').trim() : '';
 
-    const matchIdHyphen = `match-${rawId}`;
-    const dbMatchId = formatUuid('match', rawId);
+    const matchIdHyphen = rawId ? `match-${rawId}` : '';
+    const dbMatchId = rawId ? formatUuid('match', rawId) : '';
     const dbUserId = formatUuid('user', activeUser.telegram_id || activeUser.id);
 
-    let targetMatch: Match | null = null;
+    let targetMatchData: any = null;
 
     if (isSupabaseConfigured && supabase) {
       try {
-        const { data: matchData, error: mErr } = await supabase
-          .from('matches')
-          .select('*')
-          .or(`id.eq.${dbMatchId},id.eq.${rawId},id.eq.${matchIdHyphen}`)
-          .maybeSingle();
+        // 1. Try fetching exact match ID
+        if (rawId) {
+          const { data: matches, error: mErr } = await supabase
+            .from('matches')
+            .select('*')
+            .or(`id.eq.${dbMatchId},id.eq.${rawId},id.eq.${matchIdHyphen}`)
+            .order('created_at', { ascending: false });
 
-        if (mErr) console.error('Supabase fetch match error:', mErr);
+          if (mErr) console.error('Supabase fetch match error:', mErr);
+          if (matches && matches.length > 0) {
+            targetMatchData = matches[0];
+          }
+        }
 
-        if (matchData) {
+        // 2. Fallback: search for any active lobby in Supabase created recently
+        if (!targetMatchData) {
+          const { data: activeLobbies, error: lErr } = await supabase
+            .from('matches')
+            .select('*')
+            .eq('status', 'lobby')
+            .order('created_at', { ascending: false })
+            .limit(1);
+
+          if (lErr) console.error('Supabase fetch active lobbies error:', lErr);
+          if (activeLobbies && activeLobbies.length > 0) {
+            targetMatchData = activeLobbies[0];
+          }
+        }
+
+        if (targetMatchData) {
+          // Add activeUser to match_participants if not already joined
+          const dbPartId = formatUuid('part', Date.now());
+          const { error: insErr } = await supabase.from('match_participants').upsert({
+            id: dbPartId,
+            match_id: targetMatchData.id,
+            user_id: dbUserId,
+          }, { onConflict: 'match_id,user_id' });
+
+          if (insErr) console.error('Supabase join participant error:', insErr);
+
+          // Fetch all updated participants for this lobby
           const { data: partsData, error: pErr } = await supabase
             .from('match_participants')
             .select('*, users(*)')
-            .eq('match_id', matchData.id);
+            .eq('match_id', targetMatchData.id);
 
           if (pErr) console.error('Supabase fetch participants error:', pErr);
 
@@ -331,70 +362,29 @@ export function useMatchStore() {
             average_score: Number(p.average_score) || 0,
           }));
 
-          targetMatch = {
-            id: matchIdHyphen,
-            creator_id: matchData.creator_id,
-            created_at: matchData.created_at,
-            title: matchData.title,
-            status: matchData.status as MatchStatus,
-            points_per_round: matchData.points_per_round as 13 | 24 | 32,
+          const syncedMatch: Match = {
+            id: `match-${targetMatchData.id.replace(/[^0-9]/g, '')}`,
+            creator_id: targetMatchData.creator_id,
+            created_at: targetMatchData.created_at,
+            title: targetMatchData.title,
+            status: targetMatchData.status as MatchStatus,
+            points_per_round: targetMatchData.points_per_round as 13 | 24 | 32,
             participants,
             rounds: [],
-            current_round_index: matchData.current_round_index || 0,
+            current_round_index: targetMatchData.current_round_index || 0,
           };
+
+          triggerHapticFeedback('success');
+          saveMatch(syncedMatch);
+          return syncedMatch;
         }
       } catch (err) {
         console.warn('Supabase fetch match by deep link warning:', err);
       }
     }
 
-    if (!targetMatch) {
-      if (currentMatch?.id === matchIdHyphen || currentMatch?.id === rawId) {
-        targetMatch = currentMatch;
-      } else {
-        targetMatch = await createLobbyMatch(5, 32);
-      }
-    }
-
-    // Check if activeUser is in participants list
-    const alreadyJoined = targetMatch.participants.some(
-      (p) => p.user_id === activeUser.id || (activeUser.telegram_id && p.user.telegram_id === activeUser.telegram_id)
-    );
-
-    if (!alreadyJoined && targetMatch.participants.length < 7) {
-      const dbPartId = formatUuid('part', Date.now());
-      const newParticipant: MatchParticipant = {
-        id: dbPartId,
-        match_id: targetMatch.id,
-        user_id: activeUser.id,
-        user: activeUser,
-        total_points: 0,
-        rounds_played: 0,
-        average_score: 0,
-      };
-
-      targetMatch = {
-        ...targetMatch,
-        participants: [...targetMatch.participants, newParticipant],
-      };
-
-      if (isSupabaseConfigured && supabase) {
-        try {
-          const { error: insErr } = await supabase.from('match_participants').insert({
-            id: dbPartId,
-            match_id: dbMatchId,
-            user_id: dbUserId,
-          });
-          if (insErr) console.error('Supabase insert participant error:', insErr);
-        } catch (e) {
-          console.warn('Failed to insert match_participant into Supabase:', e);
-        }
-      }
-    }
-
-    triggerHapticFeedback('success');
-    saveMatch(targetMatch);
-    return targetMatch;
+    if (currentMatch) return currentMatch;
+    return await createLobbyMatch(5, 32);
   };
 
   const addPlayerToLobby = (userToAdd: User) => {
