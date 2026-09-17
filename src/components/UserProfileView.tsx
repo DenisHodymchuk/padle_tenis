@@ -2,7 +2,7 @@
 
 import React from 'react';
 import { User, Match } from '../types/padel';
-import { Trophy, Zap, Shield, Calendar, Award, RotateCcw } from 'lucide-react';
+import { Trophy, Zap, Calendar, Award, ArrowLeft } from 'lucide-react';
 
 interface UserProfileViewProps {
   user: User;
@@ -18,42 +18,44 @@ export const UserProfileView: React.FC<UserProfileViewProps> = ({
   return (
     <div className="w-full max-w-md mx-auto space-y-4 px-3 py-4 pb-20">
       {/* PROFILE HEADER CARD */}
-      <div className="glass-panel rounded-3xl p-6 border border-slate-800 text-center relative overflow-hidden bg-gradient-to-b from-slate-900 to-slate-950 shadow-2xl">
+      <div className="glass-panel rounded-3xl p-6 border border-slate-800 text-center relative overflow-hidden bg-gradient-to-b from-slate-900 via-slate-900 to-slate-950 shadow-2xl">
         <div className="relative inline-block mb-3">
           <img
             src={user.avatar_url || 'https://ui-avatars.com/api/?name=User'}
             alt={user.first_name}
             className="w-24 h-24 rounded-full border-4 border-[#ccff00] object-cover mx-auto shadow-xl"
           />
-          <span className="absolute -bottom-1 right-1 bg-[#ccff00] text-black font-black text-[11px] px-2 py-0.5 rounded-full shadow">
-            PLAYER
+          <span className="absolute -bottom-1 right-1/2 translate-x-1/2 bg-[#ccff00] text-black font-black text-[11px] px-3 py-0.5 rounded-full shadow uppercase">
+            ГРАВЕЦЬ
           </span>
         </div>
 
-        <h2 className="text-2xl font-black text-white">
+        <h2 className="text-2xl font-black text-white mt-1">
           {user.first_name} {user.last_name || ''}
         </h2>
-        <p className="text-xs text-slate-400 font-medium">@{user.username || 'telegram_user'}</p>
+        <p className="text-xs text-slate-400 font-medium">
+          {user.username ? `@${user.username}` : 'Учасник турнірів'}
+        </p>
 
         {/* Stats Grid */}
-        <div className="grid grid-cols-2 gap-3 mt-5 pt-4 border-t border-slate-800">
-          <div className="bg-slate-900/90 p-3 rounded-2xl border border-slate-800">
+        <div className="grid grid-cols-2 gap-3 mt-5 pt-4 border-t border-slate-800/80">
+          <div className="bg-slate-950/80 p-3.5 rounded-2xl border border-slate-800 shadow-inner">
             <div className="text-2xl font-black text-[#ccff00]">
               {user.global_average_score > 0 ? user.global_average_score.toFixed(2) : '0.00'}
             </div>
-            <div className="text-[11px] text-slate-400 font-semibold flex items-center justify-center gap-1 mt-0.5">
+            <div className="text-[11px] text-slate-400 font-semibold flex items-center justify-center gap-1 mt-1">
               <Zap className="w-3.5 h-3.5 text-[#ccff00]" />
               Середній бал
             </div>
           </div>
 
-          <div className="bg-slate-900/90 p-3 rounded-2xl border border-slate-800">
+          <div className="bg-slate-950/80 p-3.5 rounded-2xl border border-slate-800 shadow-inner">
             <div className="text-2xl font-black text-sky-400">
               {user.total_matches_played}
             </div>
-            <div className="text-[11px] text-slate-400 font-semibold flex items-center justify-center gap-1 mt-0.5">
+            <div className="text-[11px] text-slate-400 font-semibold flex items-center justify-center gap-1 mt-1">
               <Trophy className="w-3.5 h-3.5 text-sky-400" />
-              Матчів зіграно
+              Зіграно турнірів
             </div>
           </div>
         </div>
@@ -76,7 +78,7 @@ export const UserProfileView: React.FC<UserProfileViewProps> = ({
             {userMatches.map((m) => (
               <div
                 key={m.id}
-                className="p-3 rounded-2xl bg-slate-900/80 border border-slate-800 flex items-center justify-between"
+                className="p-3.5 rounded-2xl bg-slate-900/90 border border-slate-800 flex items-center justify-between"
               >
                 <div>
                   <div className="text-xs font-bold text-white">{m.title}</div>
@@ -85,7 +87,7 @@ export const UserProfileView: React.FC<UserProfileViewProps> = ({
                   </div>
                 </div>
                 <span
-                  className={`text-[10px] font-bold px-2 py-0.5 rounded ${
+                  className={`text-[10px] font-bold px-2.5 py-1 rounded-full ${
                     m.status === 'completed'
                       ? 'bg-emerald-950 text-emerald-400 border border-emerald-900'
                       : 'bg-amber-950 text-amber-400 border border-amber-900'
@@ -101,9 +103,10 @@ export const UserProfileView: React.FC<UserProfileViewProps> = ({
 
       <button
         onClick={onBackToHome}
-        className="w-full bg-slate-800 hover:bg-slate-700 text-slate-200 py-3.5 px-4 rounded-2xl font-bold text-xs flex items-center justify-center gap-2 border border-slate-700 transition-all"
+        className="w-full bg-slate-800 hover:bg-slate-700 text-slate-200 py-3.5 px-4 rounded-2xl font-bold text-xs flex items-center justify-center gap-2 border border-slate-700 transition-all shadow-md"
       >
-        ← Повернутися на головну
+        <ArrowLeft className="w-4 h-4 text-slate-400" />
+        Повернутися до Головного меню
       </button>
     </div>
   );

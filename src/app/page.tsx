@@ -9,6 +9,7 @@ import { ActiveMatchView } from '../components/ActiveMatchView';
 import { MatchSummaryView } from '../components/MatchSummaryView';
 import { UserProfileView } from '../components/UserProfileView';
 import { initTelegramApp } from '../lib/telegram';
+import { ArrowLeft } from 'lucide-react';
 
 export default function Page() {
   const {
@@ -32,12 +33,10 @@ export default function Page() {
 
   useEffect(() => {
     if (currentMatch) {
-      if (currentMatch.status === 'lobby') {
+      if (currentMatch.status === 'lobby' && view !== 'home') {
         setView('lobby');
-      } else if (currentMatch.status === 'completed') {
+      } else if (currentMatch.status === 'completed' && view !== 'home') {
         setView('summary');
-      } else if (currentMatch.status === 'in_progress' && view === 'home') {
-        // Option to stay or switch
       }
     }
   }, [currentMatch]);
@@ -79,6 +78,7 @@ export default function Page() {
           <HomeDashboard
             currentMatch={currentMatch}
             currentUser={currentUser}
+            companyPlayers={companyPlayers}
             onCreateMatch={handleCreateNewMatch}
             onResumeMatch={handleResumeMatch}
           />
@@ -89,11 +89,12 @@ export default function Page() {
             <div className="max-w-md mx-auto px-4 pt-3 flex items-center justify-between">
               <button
                 onClick={() => setView('home')}
-                className="text-xs text-slate-400 hover:text-white underline font-medium"
+                className="bg-slate-900 hover:bg-slate-800 border border-slate-800 text-slate-300 px-3 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all shadow-sm"
               >
-                ← Головне меню
+                <ArrowLeft className="w-3.5 h-3.5 text-[#ccff00]" />
+                Головне меню
               </button>
-              <h2 className="text-xs font-bold text-[#ccff00]">
+              <h2 className="text-xs font-bold text-[#ccff00] bg-lime-950/60 px-2.5 py-1 rounded-full border border-lime-900/50">
                 Лобі підготовки
               </h2>
             </div>
@@ -113,9 +114,10 @@ export default function Page() {
             <div className="max-w-md mx-auto px-4 pt-3 flex items-center justify-between">
               <button
                 onClick={() => setView('home')}
-                className="text-xs text-slate-400 hover:text-white underline font-medium"
+                className="bg-slate-900 hover:bg-slate-800 border border-slate-800 text-slate-300 px-3 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all shadow-sm"
               >
-                ← Головне меню
+                <ArrowLeft className="w-3.5 h-3.5 text-[#ccff00]" />
+                Головне меню
               </button>
               <h2 className="text-xs font-bold text-slate-300">
                 {currentMatch.title}
@@ -135,12 +137,13 @@ export default function Page() {
             <div className="max-w-md mx-auto px-4 pt-3 flex items-center justify-between">
               <button
                 onClick={() => setView('home')}
-                className="text-xs text-slate-400 hover:text-white underline font-medium"
+                className="bg-slate-900 hover:bg-slate-800 border border-slate-800 text-slate-300 px-3 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all shadow-sm"
               >
-                ← Головне меню
+                <ArrowLeft className="w-3.5 h-3.5 text-[#ccff00]" />
+                Головне меню
               </button>
-              <h2 className="text-xs font-bold text-[#ccff00]">
-                Фінальні Результати
+              <h2 className="text-xs font-bold text-[#ccff00] bg-lime-950/60 px-2.5 py-1 rounded-full border border-lime-900/50">
+                Підсумки Турніру
               </h2>
             </div>
             <MatchSummaryView

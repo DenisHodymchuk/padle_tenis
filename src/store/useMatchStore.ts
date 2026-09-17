@@ -2,7 +2,6 @@
 
 import { useState, useEffect } from 'react';
 import { Match, User, MatchStatus, MatchParticipant } from '../types/padel';
-import { SAMPLE_PLAYERS } from '../lib/mockData';
 import { generateAmericanoSchedule, recalculateLeaderboard } from '../lib/americanoLogic';
 import { getCurrentUser, triggerHapticFeedback } from '../lib/telegram';
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
@@ -12,7 +11,7 @@ const STORAGE_KEY = 'padel_americano_current_match';
 export function useMatchStore() {
   const [currentMatch, setCurrentMatch] = useState<Match | null>(null);
   const [currentUser, setCurrentUser] = useState<User>(getCurrentUser());
-  const [companyPlayers, setCompanyPlayers] = useState<User[]>(SAMPLE_PLAYERS);
+  const [companyPlayers, setCompanyPlayers] = useState<User[]>([]);
   const [userMatches, setUserMatches] = useState<Match[]>([]);
 
   useEffect(() => {
@@ -146,7 +145,7 @@ export function useMatchStore() {
   const createLobbyMatch = (playerCount: number = 5, pointsPerRound: 13 | 24 | 32 = 32, title?: string) => {
     const matchId = `match-${Date.now()}`;
 
-    // Add current real user as first participant
+    // Add ONLY the real current user as participant #1
     const creatorParticipant: MatchParticipant = {
       id: `part-1-${Date.now()}`,
       match_id: matchId,
@@ -157,21 +156,6 @@ export function useMatchStore() {
       average_score: 0,
     };
 
-    // Fill remaining slots from available registered company players
-    const otherPlayers = companyPlayers.filter((p) => p.id !== currentUser.id).slice(0, playerCount - 1);
-    const initialParticipants: MatchParticipant[] = [
-      creatorParticipant,
-      ...otherPlayers.map((u, i) => ({
-        id: `part-${i + 2}-${Date.now()}`,
-        match_id: matchId,
-        user_id: u.id,
-        user: u,
-        total_points: 0,
-        rounds_played: 0,
-        average_score: 0,
-      })),
-    ];
-
     const newMatch: Match = {
       id: matchId,
       creator_id: currentUser.id,
@@ -179,7 +163,7 @@ export function useMatchStore() {
       title: title || `Падел Американка (${playerCount} гравців)`,
       status: 'lobby',
       points_per_round: pointsPerRound,
-      participants: initialParticipants,
+      participants: [creatorParticipant],
       rounds: [],
       current_round_index: 0,
     };
@@ -298,6 +282,41 @@ export function useMatchStore() {
     };
 
     saveMatch(updatedMatch);
+
+    // If match completed, update users global stats in Supabase & local state
+    if (isLastRound) {
+      updateParticipantsGlobalStats(updatedParticipants);
+    }
+  };
+
+  const updateParticipantsGlobalStats = async (participants: MatchParticipant[]) => {
+    // Update local state for current user
+    const userPart = participants.find((p) => p.user_id === currentUser.id);
+    if (userPart) {
+      const newMatchesCount = currentUser.total_matches_played + 1;
+      const newAvg = currentUser.total_matches_played === 0
+        ? userPart.average_score
+        : Math.round(((currentUser.global_average_score * currentUser.total_matches_played + userPart.average_score) / newMatchesCount) * 100) / 100;
+
+      setCurrentUser((prev) => ({
+        ...prev,
+        total_matches_played: newMatchesCount,
+        global_average_score: newAvg,
+      }));
+
+      // Update Supabase if configured
+      if (isSupabaseConfigured && supabase && currentUser.telegram_id) {
+        try {
+          await supabase.from('users').update({
+            total_matches_played: newMatchesCount,
+            global_average_score: newAvg,
+          }).eq('telegram_id', currentUser.telegram_id);
+          fetchCompanyPlayers();
+        } catch (e) {
+          console.warn('Failed to update user stats in Supabase:', e);
+        }
+      }
+    }
   };
 
   const resetMatch = () => {

@@ -2,7 +2,7 @@
 
 import React, { useState } from 'react';
 import { Match, User } from '../types/padel';
-import { Share2, Play, Users, Plus, ShieldCheck, Check, UserPlus } from 'lucide-react';
+import { Share2, Play, Users, Check, UserPlus } from 'lucide-react';
 import { shareMatchInvite, triggerHapticFeedback } from '../lib/telegram';
 
 interface MatchLobbyViewProps {
@@ -24,7 +24,6 @@ export const MatchLobbyView: React.FC<MatchLobbyViewProps> = ({
 }) => {
   const [showAddModal, setShowAddModal] = useState(false);
 
-  const isCreator = match.creator_id === currentUser.id || true; // allow testing actions
   const playerCount = match.participants.length;
   const canStart = playerCount >= 4 && playerCount <= 7;
 
@@ -34,7 +33,7 @@ export const MatchLobbyView: React.FC<MatchLobbyViewProps> = ({
   return (
     <div className="w-full max-w-md mx-auto space-y-4 px-3 py-4 pb-20">
       {/* HEADER CARD */}
-      <div className="glass-panel rounded-3xl p-5 border border-slate-800 relative overflow-hidden bg-gradient-to-b from-slate-900 to-slate-950 shadow-xl">
+      <div className="glass-panel rounded-3xl p-5 border border-slate-800 relative overflow-hidden bg-gradient-to-b from-slate-900 via-slate-900 to-slate-950 shadow-xl">
         <div className="flex items-center justify-between mb-2">
           <span className="text-[11px] font-black uppercase text-[#ccff00] bg-lime-950/80 border border-lime-400/40 px-3 py-0.5 rounded-full flex items-center gap-1.5">
             <span className="w-2 h-2 rounded-full bg-[#ccff00] animate-pulse"></span>
@@ -54,7 +53,7 @@ export const MatchLobbyView: React.FC<MatchLobbyViewProps> = ({
         <div className="grid grid-cols-2 gap-2">
           <button
             onClick={() => shareMatchInvite(match.id, match.title)}
-            className="w-full neon-glow-btn py-3 px-3 rounded-xl font-bold text-xs flex items-center justify-center gap-1.5 uppercase tracking-wider"
+            className="w-full neon-glow-btn py-3 px-3 rounded-xl font-extrabold text-xs flex items-center justify-center gap-1.5 uppercase tracking-wider"
           >
             <Share2 className="w-4 h-4 text-black" />
             Запросити в чат
@@ -65,29 +64,29 @@ export const MatchLobbyView: React.FC<MatchLobbyViewProps> = ({
               setShowAddModal(true);
               triggerHapticFeedback('light');
             }}
-            className="w-full bg-slate-800 hover:bg-slate-700 text-slate-200 py-3 px-3 rounded-xl font-bold text-xs flex items-center justify-center gap-1.5 border border-slate-700"
+            className="w-full bg-slate-800 hover:bg-slate-700 text-slate-200 py-3 px-3 rounded-xl font-bold text-xs flex items-center justify-center gap-1.5 border border-slate-700 shadow-md"
           >
             <UserPlus className="w-4 h-4 text-[#ccff00]" />
-            Додати гравця
+            Додати з бази
           </button>
         </div>
       </div>
 
       {/* PARTICIPANTS LIST */}
-      <div className="glass-panel rounded-3xl p-5 border border-slate-800 space-y-3">
+      <div className="glass-panel rounded-3xl p-5 border border-slate-800 space-y-3 shadow-xl">
         <div className="flex items-center justify-between px-1 mb-1">
           <h3 className="text-sm font-bold text-white flex items-center gap-2">
             <Users className="w-4 h-4 text-[#ccff00]" />
             Учасники Лобі ({playerCount} з 7)
           </h3>
           <span
-            className={`text-xs font-bold px-2 py-0.5 rounded ${
+            className={`text-[11px] font-extrabold px-2.5 py-0.5 rounded-full ${
               canStart
                 ? 'bg-emerald-950 text-emerald-400 border border-emerald-800'
                 : 'bg-amber-950 text-amber-400 border border-amber-800'
             }`}
           >
-            {canStart ? 'Готово до старту' : 'Потрібно 4-7 гравців'}
+            {canStart ? 'Готово до старту' : 'Потрібно від 4 гравців'}
           </span>
         </div>
 
@@ -111,7 +110,7 @@ export const MatchLobbyView: React.FC<MatchLobbyViewProps> = ({
                     {p.user.first_name} {p.user.last_name || ''}
                   </div>
                   <div className="text-[11px] text-slate-400">
-                    @{p.user.username || 'telegram_user'}
+                    {p.user.username ? `@${p.user.username}` : 'Учасник лобі'}
                   </div>
                 </div>
               </div>
@@ -127,16 +126,16 @@ export const MatchLobbyView: React.FC<MatchLobbyViewProps> = ({
           {Array.from({ length: Math.max(0, 4 - playerCount) }).map((_, i) => (
             <div
               key={`empty-${i}`}
-              className="flex items-center justify-between p-3 rounded-2xl border-2 border-dashed border-slate-800 text-slate-600"
+              className="flex items-center justify-between p-3 rounded-2xl border-2 border-dashed border-slate-800 text-slate-500 bg-slate-950/40"
             >
               <div className="flex items-center gap-3">
                 <span className="w-6 text-center text-xs font-bold opacity-40">
                   #{playerCount + i + 1}
                 </span>
                 <div className="w-10 h-10 rounded-full bg-slate-900 border border-slate-800 flex items-center justify-center">
-                  <Users className="w-5 h-5 opacity-40" />
+                  <Users className="w-5 h-5 opacity-40 text-slate-400" />
                 </div>
-                <span className="text-xs font-semibold italic">Очікуємо гравця...</span>
+                <span className="text-xs font-medium italic text-slate-400">Очікуємо гравця...</span>
               </div>
               <button
                 onClick={() => shareMatchInvite(match.id, match.title)}
@@ -162,10 +161,10 @@ export const MatchLobbyView: React.FC<MatchLobbyViewProps> = ({
             }
           }}
           disabled={!canStart}
-          className="w-full neon-glow-btn py-4 px-4 rounded-2xl font-black text-sm flex items-center justify-center gap-2 uppercase tracking-wide disabled:opacity-40"
+          className="w-full neon-glow-btn py-4 px-4 rounded-2xl font-black text-xs flex items-center justify-center gap-2 uppercase tracking-wider disabled:opacity-40"
         >
-          <Play className="w-5 h-5 text-black fill-black" />
-          Почати Гри (Згенерувати Сітку)
+          <Play className="w-4 h-4 text-black fill-black" />
+          Розпочати Грати (Сформувати Сітку)
         </button>
       </div>
 
@@ -188,9 +187,9 @@ export const MatchLobbyView: React.FC<MatchLobbyViewProps> = ({
 
             <div className="max-h-60 overflow-y-auto space-y-2 pr-1">
               {availableCompanyPlayers.length === 0 ? (
-                <p className="text-xs text-slate-400 text-center py-4">
-                  Усі зареєстровані гравці вже додані у лобі
-                </p>
+                <div className="text-center py-6 text-slate-400 text-xs">
+                  Немає інших зареєстрованих гравців у базі. Запросіть друзів у чат!
+                </div>
               ) : (
                 availableCompanyPlayers.map((player) => (
                   <div
