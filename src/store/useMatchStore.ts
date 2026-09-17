@@ -8,6 +8,13 @@ import { supabase, isSupabaseConfigured } from '../lib/supabase';
 
 const STORAGE_KEY = 'padel_americano_current_match';
 
+export function formatUuid(prefix: 'user' | 'match' | 'part', raw: string | number): string {
+  const str = String(raw).replace(/[^0-9]/g, '');
+  const pad = (str || '1').padStart(12, '0').slice(-12);
+  const typeByte = prefix === 'user' ? '8000' : prefix === 'match' ? '9000' : 'a000';
+  return `00000000-0000-4000-${typeByte}-${pad}`;
+}
+
 export function useMatchStore() {
   const [currentMatch, setCurrentMatch] = useState<Match | null>(null);
   const [currentUser, setCurrentUser] = useState<User>(getCurrentUser());
@@ -44,12 +51,15 @@ export function useMatchStore() {
   useEffect(() => {
     if (!isSupabaseConfigured || !supabase || !currentMatch?.id) return;
 
+    const rawMatchId = currentMatch.id.replace(/[^0-9]/g, '');
+    const dbMatchId = formatUuid('match', rawMatchId);
+
     // Channel for rounds changes (scores)
     const roundsChannel = supabase
       .channel(`rounds:${currentMatch.id}`)
       .on(
         'postgres_changes',
-        { event: '*', schema: 'public', table: 'rounds', filter: `match_id=eq.${currentMatch.id}` },
+        { event: '*', schema: 'public', table: 'rounds' },
         (payload) => {
           const updatedRound = payload.new as any;
           if (!updatedRound) return;
@@ -81,7 +91,7 @@ export function useMatchStore() {
       .channel(`participants:${currentMatch.id}`)
       .on(
         'postgres_changes',
-        { event: 'INSERT', schema: 'public', table: 'match_participants', filter: `match_id=eq.${currentMatch.id}` },
+        { event: '*', schema: 'public', table: 'match_participants' },
         async (payload) => {
           const newPart = payload.new as any;
           if (!newPart || !newPart.user_id) return;
@@ -91,7 +101,7 @@ export function useMatchStore() {
             .from('users')
             .select('*')
             .eq('id', newPart.user_id)
-            .single();
+            .maybeSingle();
 
           if (userData) {
             const joiningUser: User = {
@@ -107,7 +117,9 @@ export function useMatchStore() {
 
             setCurrentMatch((prev) => {
               if (!prev) return null;
-              const exists = prev.participants.some((p) => p.user_id === joiningUser.id);
+              const exists = prev.participants.some(
+                (p) => p.user_id === joiningUser.id || (joiningUser.telegram_id && p.user.telegram_id === joiningUser.telegram_id)
+              );
               if (exists) return prev;
 
               const updatedParticipants: MatchParticipant[] = [
@@ -141,9 +153,10 @@ export function useMatchStore() {
 
   const syncUserToSupabase = async (user: User): Promise<User> => {
     if (!supabase || !user.telegram_id) return user;
+    const dbUserId = formatUuid('user', user.telegram_id);
     try {
       const { data, error } = await supabase.from('users').upsert({
-        id: user.id,
+        id: dbUserId,
         telegram_id: user.telegram_id,
         first_name: user.first_name,
         last_name: user.last_name,
@@ -168,7 +181,7 @@ export function useMatchStore() {
     } catch (err) {
       console.warn('Supabase sync user warning:', err);
     }
-    return user;
+    return { ...user, id: dbUserId };
   };
 
   const fetchCompanyPlayers = async () => {
@@ -210,10 +223,14 @@ export function useMatchStore() {
 
   const createLobbyMatch = async (playerCount: number = 5, pointsPerRound: 13 | 24 | 32 = 32, title?: string) => {
     const activeUser = await syncUserToSupabase(currentUser);
-    const matchId = `match-${Date.now()}`;
+    const rawTs = Date.now();
+    const matchId = `match-${rawTs}`;
+    const dbMatchId = formatUuid('match', rawTs);
+    const dbUserId = formatUuid('user', activeUser.telegram_id || activeUser.id);
+    const dbPartId = formatUuid('part', rawTs);
 
     const creatorParticipant: MatchParticipant = {
-      id: `part-${Date.now()}`,
+      id: dbPartId,
       match_id: matchId,
       user_id: activeUser.id,
       user: activeUser,
@@ -241,8 +258,8 @@ export function useMatchStore() {
     if (isSupabaseConfigured && supabase) {
       try {
         const { error: matchErr } = await supabase.from('matches').insert({
-          id: matchId,
-          creator_id: activeUser.id,
+          id: dbMatchId,
+          creator_id: dbUserId,
           title: newMatch.title,
           status: 'lobby',
           points_per_round: pointsPerRound,
@@ -250,9 +267,9 @@ export function useMatchStore() {
         if (matchErr) console.error('Supabase match insert error:', matchErr);
 
         const { error: partErr } = await supabase.from('match_participants').insert({
-          id: `part-${Date.now()}`,
-          match_id: matchId,
-          user_id: activeUser.id,
+          id: dbPartId,
+          match_id: dbMatchId,
+          user_id: dbUserId,
         });
         if (partErr) console.error('Supabase participant insert error:', partErr);
       } catch (err) {
@@ -272,30 +289,28 @@ export function useMatchStore() {
     if (!rawId) return null;
 
     const matchIdHyphen = `match-${rawId}`;
-    const matchIdUnderscore = `match_${rawId}`;
+    const dbMatchId = formatUuid('match', rawId);
+    const dbUserId = formatUuid('user', activeUser.telegram_id || activeUser.id);
 
-    // Check if match is already loaded in local state
-    let targetMatch =
-      currentMatch?.id === matchIdHyphen ||
-      currentMatch?.id === matchIdUnderscore ||
-      currentMatch?.id === rawId
-        ? currentMatch
-        : null;
+    let targetMatch: Match | null = null;
 
-    // If not local, try fetching from Supabase
-    if (!targetMatch && isSupabaseConfigured && supabase) {
+    if (isSupabaseConfigured && supabase) {
       try {
-        const { data: matchData } = await supabase
+        const { data: matchData, error: mErr } = await supabase
           .from('matches')
           .select('*')
-          .or(`id.eq.${matchIdHyphen},id.eq.${matchIdUnderscore},id.eq.${rawId}`)
+          .or(`id.eq.${dbMatchId},id.eq.${rawId},id.eq.${matchIdHyphen}`)
           .maybeSingle();
 
+        if (mErr) console.error('Supabase fetch match error:', mErr);
+
         if (matchData) {
-          const { data: partsData } = await supabase
+          const { data: partsData, error: pErr } = await supabase
             .from('match_participants')
             .select('*, users(*)')
             .eq('match_id', matchData.id);
+
+          if (pErr) console.error('Supabase fetch participants error:', pErr);
 
           const participants: MatchParticipant[] = (partsData || []).map((p: any) => ({
             id: p.id,
@@ -317,7 +332,7 @@ export function useMatchStore() {
           }));
 
           targetMatch = {
-            id: matchData.id,
+            id: matchIdHyphen,
             creator_id: matchData.creator_id,
             created_at: matchData.created_at,
             title: matchData.title,
@@ -334,8 +349,11 @@ export function useMatchStore() {
     }
 
     if (!targetMatch) {
-      // Fallback: create or retrieve local match container
-      targetMatch = currentMatch || createLobbyMatch(5, 32);
+      if (currentMatch?.id === matchIdHyphen || currentMatch?.id === rawId) {
+        targetMatch = currentMatch;
+      } else {
+        targetMatch = await createLobbyMatch(5, 32);
+      }
     }
 
     // Check if activeUser is in participants list
@@ -344,8 +362,9 @@ export function useMatchStore() {
     );
 
     if (!alreadyJoined && targetMatch.participants.length < 7) {
+      const dbPartId = formatUuid('part', Date.now());
       const newParticipant: MatchParticipant = {
-        id: `part-${Date.now()}`,
+        id: dbPartId,
         match_id: targetMatch.id,
         user_id: activeUser.id,
         user: activeUser,
@@ -359,13 +378,14 @@ export function useMatchStore() {
         participants: [...targetMatch.participants, newParticipant],
       };
 
-      // Save to Supabase match_participants
-      if (isSupabaseConfigured && supabase && activeUser.id) {
+      if (isSupabaseConfigured && supabase) {
         try {
-          await supabase.from('match_participants').insert({
-            match_id: targetMatch.id,
-            user_id: activeUser.id,
+          const { error: insErr } = await supabase.from('match_participants').insert({
+            id: dbPartId,
+            match_id: dbMatchId,
+            user_id: dbUserId,
           });
+          if (insErr) console.error('Supabase insert participant error:', insErr);
         } catch (e) {
           console.warn('Failed to insert match_participant into Supabase:', e);
         }
