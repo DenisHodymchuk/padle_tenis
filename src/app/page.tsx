@@ -31,7 +31,7 @@ export default function Page() {
   useEffect(() => {
     initTelegramApp();
     const startParam = getTelegramStartParam();
-    if (startParam && startParam.includes('match_')) {
+    if (startParam && (startParam.includes('match_') || startParam.includes('match-') || startParam.length >= 3)) {
       joinMatchByDeepLink(startParam).then((match) => {
         if (match) {
           if (match.status === 'lobby') setView('lobby');
