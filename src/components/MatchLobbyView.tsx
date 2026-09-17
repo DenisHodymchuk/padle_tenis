@@ -2,7 +2,7 @@
 
 import React, { useState } from 'react';
 import { Match, User } from '../types/padel';
-import { Share2, Play, Users, Check, UserPlus, Copy, CheckCircle2 } from 'lucide-react';
+import { Share2, Play, Users, Check, UserPlus, Copy, CheckCircle2, Trash2 } from 'lucide-react';
 import { shareMatchInvite, copyMatchInviteLink, triggerHapticFeedback } from '../lib/telegram';
 
 interface MatchLobbyViewProps {
@@ -12,6 +12,7 @@ interface MatchLobbyViewProps {
   onAddPlayerToLobby: (player: User) => void;
   onStartGame: () => void;
   onBackToHome: () => void;
+  onCancelMatch?: () => void;
 }
 
 export const MatchLobbyView: React.FC<MatchLobbyViewProps> = ({
@@ -21,6 +22,7 @@ export const MatchLobbyView: React.FC<MatchLobbyViewProps> = ({
   onAddPlayerToLobby,
   onStartGame,
   onBackToHome,
+  onCancelMatch,
 }) => {
   const [showAddModal, setShowAddModal] = useState(false);
   const [copiedToast, setCopiedToast] = useState(false);
@@ -172,8 +174,8 @@ export const MatchLobbyView: React.FC<MatchLobbyViewProps> = ({
         </div>
       </div>
 
-      {/* START GAME BUTTON (Organizer Action) */}
-      <div className="pt-2">
+      {/* START GAME & CANCEL BUTTONS */}
+      <div className="pt-2 space-y-2">
         <button
           onClick={() => {
             if (canStart) {
@@ -190,6 +192,21 @@ export const MatchLobbyView: React.FC<MatchLobbyViewProps> = ({
           <Play className="w-4 h-4 text-black fill-black" />
           Розпочати Грати (Сформувати Сітку)
         </button>
+
+        {onCancelMatch && (
+          <button
+            onClick={() => {
+              if (window.confirm('Ви впевнені, що хочете скасувати та видалити цей турнір?')) {
+                onCancelMatch();
+                onBackToHome();
+              }
+            }}
+            className="w-full bg-red-950/40 hover:bg-red-900/60 border border-red-800/60 text-red-300 py-3 px-4 rounded-xl font-bold text-xs flex items-center justify-center gap-2 transition-all"
+          >
+            <Trash2 className="w-4 h-4 text-red-400" />
+            Скасувати лобі турніру
+          </button>
+        )}
       </div>
 
       {/* ADD COMPANY PLAYER MODAL */}

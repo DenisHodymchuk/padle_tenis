@@ -541,8 +541,24 @@ export function useMatchStore() {
     }
   };
 
-  const resetMatch = () => {
+  const cancelCurrentMatch = async () => {
+    if (currentMatch && isSupabaseConfigured && supabase) {
+      const rawMatchId = currentMatch.id.replace(/[^0-9]/g, '');
+      const dbMatchId = formatUuid('match', rawMatchId);
+      try {
+        await supabase.from('matches').delete().or(`id.eq.${dbMatchId},id.eq.${currentMatch.id}`);
+        await supabase.from('match_participants').delete().or(`match_id.eq.${dbMatchId},match_id.eq.${currentMatch.id}`);
+        await supabase.from('rounds').delete().or(`match_id.eq.${dbMatchId},match_id.eq.${currentMatch.id}`);
+      } catch (e) {
+        console.warn('Failed to delete match from Supabase:', e);
+      }
+    }
+    triggerHapticFeedback('warning');
     saveMatch(null);
+  };
+
+  const resetMatch = () => {
+    cancelCurrentMatch();
   };
 
   return {
@@ -557,5 +573,6 @@ export function useMatchStore() {
     updateCurrentRoundScore,
     finishCurrentRound,
     resetMatch,
+    cancelCurrentMatch,
   };
 }

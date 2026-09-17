@@ -24,6 +24,7 @@ export default function Page() {
     updateCurrentRoundScore,
     finishCurrentRound,
     resetMatch,
+    cancelCurrentMatch,
   } = useMatchStore();
 
   const [view, setView] = useState<'home' | 'lobby' | 'active_match' | 'summary' | 'profile'>('home');
@@ -92,6 +93,7 @@ export default function Page() {
             companyPlayers={companyPlayers}
             onCreateMatch={handleCreateNewMatch}
             onResumeMatch={handleResumeMatch}
+            onCancelMatch={cancelCurrentMatch}
           />
         )}
 
@@ -116,6 +118,10 @@ export default function Page() {
               onAddPlayerToLobby={addPlayerToLobby}
               onStartGame={handleStartGameFromLobby}
               onBackToHome={() => setView('home')}
+              onCancelMatch={() => {
+                cancelCurrentMatch();
+                setView('home');
+              }}
             />
           </div>
         )}

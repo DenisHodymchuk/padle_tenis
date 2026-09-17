@@ -2,7 +2,7 @@
 
 import React, { useState } from 'react';
 import { Match, User } from '../types/padel';
-import { Play, Plus, Trophy, Zap, UserPlus } from 'lucide-react';
+import { Play, Plus, Trophy, Zap, UserPlus, Trash2 } from 'lucide-react';
 import { triggerHapticFeedback } from '../lib/telegram';
 
 interface HomeDashboardProps {
@@ -11,6 +11,7 @@ interface HomeDashboardProps {
   companyPlayers: User[];
   onCreateMatch: (playerCount: number, pointsPerRound: 13 | 24 | 32) => void;
   onResumeMatch: () => void;
+  onCancelMatch: () => void;
 }
 
 export const HomeDashboard: React.FC<HomeDashboardProps> = ({
@@ -19,6 +20,7 @@ export const HomeDashboard: React.FC<HomeDashboardProps> = ({
   companyPlayers,
   onCreateMatch,
   onResumeMatch,
+  onCancelMatch,
 }) => {
   const [selectedPlayerCount, setSelectedPlayerCount] = useState<number>(5);
   const [selectedPoints, setSelectedPoints] = useState<13 | 24 | 32>(32);
@@ -50,16 +52,30 @@ export const HomeDashboard: React.FC<HomeDashboardProps> = ({
             Ліміт очок на раунд: <span className="text-white font-bold">{currentMatch.points_per_round}</span>
           </p>
 
-          <button
-            onClick={() => {
-              triggerHapticFeedback('medium');
-              onResumeMatch();
-            }}
-            className="w-full neon-glow-btn py-3.5 px-4 rounded-xl font-black text-xs flex items-center justify-center gap-2 uppercase tracking-wider"
-          >
-            <Play className="w-4 h-4 text-black fill-black" />
-            {currentMatch.status === 'lobby' ? 'Перейти в лобі' : 'Повернутися до гри'}
-          </button>
+          <div className="space-y-2">
+            <button
+              onClick={() => {
+                triggerHapticFeedback('medium');
+                onResumeMatch();
+              }}
+              className="w-full neon-glow-btn py-3.5 px-4 rounded-xl font-black text-xs flex items-center justify-center gap-2 uppercase tracking-wider"
+            >
+              <Play className="w-4 h-4 text-black fill-black" />
+              {currentMatch.status === 'lobby' ? 'Перейти в лобі' : 'Повернутися до гри'}
+            </button>
+
+            <button
+              onClick={() => {
+                if (window.confirm('Ви впевнені, що хочете скасувати та видалити цей турнір?')) {
+                  onCancelMatch();
+                }
+              }}
+              className="w-full bg-red-950/40 hover:bg-red-900/60 border border-red-800/60 text-red-300 py-2.5 px-3 rounded-xl font-bold text-xs flex items-center justify-center gap-2 transition-all"
+            >
+              <Trash2 className="w-4 h-4 text-red-400" />
+              Скасувати та видалити турнір
+            </button>
+          </div>
         </div>
       )}
 
