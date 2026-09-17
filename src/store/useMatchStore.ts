@@ -151,6 +151,62 @@ export function useMatchStore() {
     };
   }, [currentMatch?.id]);
 
+  // Periodic polling for lobby participants every 2 seconds
+  useEffect(() => {
+    if (!isSupabaseConfigured || !supabase || !currentMatch?.id || currentMatch.status !== 'lobby') return;
+
+    const rawMatchId = currentMatch.id.replace(/[^0-9]/g, '');
+    const dbMatchId = formatUuid('match', rawMatchId);
+
+    const fetchLobbyParticipants = async () => {
+      try {
+        const { data: partsData } = await supabase
+          .from('match_participants')
+          .select('*, users(*)')
+          .or(`match_id.eq.${dbMatchId},match_id.eq.${currentMatch.id}`);
+
+        if (partsData && partsData.length > 0) {
+          const freshParticipants: MatchParticipant[] = partsData.map((p: any) => ({
+            id: p.id,
+            match_id: p.match_id,
+            user_id: p.user_id,
+            user: {
+              id: p.users?.id || p.user_id,
+              telegram_id: p.users?.telegram_id,
+              first_name: p.users?.first_name || 'Учасник',
+              last_name: p.users?.last_name || '',
+              username: p.users?.username || '',
+              avatar_url: p.users?.avatar_url || 'https://ui-avatars.com/api/?name=Padel',
+              total_matches_played: p.users?.total_matches_played || 0,
+              global_average_score: Number(p.users?.global_average_score) || 0,
+            },
+            total_points: p.total_points || 0,
+            rounds_played: p.rounds_played || 0,
+            average_score: Number(p.average_score) || 0,
+          }));
+
+          setCurrentMatch((prev) => {
+            if (!prev) return null;
+            if (prev.participants.length !== freshParticipants.length) {
+              return {
+                ...prev,
+                participants: freshParticipants,
+              };
+            }
+            return prev;
+          });
+        }
+      } catch (err) {
+        console.warn('Lobby polling warning:', err);
+      }
+    };
+
+    fetchLobbyParticipants();
+    const interval = setInterval(fetchLobbyParticipants, 2000);
+
+    return () => clearInterval(interval);
+  }, [currentMatch?.id, currentMatch?.status]);
+
   const syncUserToSupabase = async (user: User): Promise<User> => {
     if (!supabase || !user.telegram_id) return user;
     const dbUserId = formatUuid('user', user.telegram_id);

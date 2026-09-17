@@ -2,7 +2,7 @@
 
 import React, { useState } from 'react';
 import { Match, User } from '../types/padel';
-import { Share2, Play, Users, Check, UserPlus, Copy, CheckCircle2, Trash2 } from 'lucide-react';
+import { Share2, Play, Users, Check, UserPlus, Copy, CheckCircle2, Trash2, RotateCw } from 'lucide-react';
 import { shareMatchInvite, copyMatchInviteLink, triggerHapticFeedback } from '../lib/telegram';
 
 interface MatchLobbyViewProps {
