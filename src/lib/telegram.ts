@@ -43,7 +43,6 @@ export function getCurrentUser(): User {
   const initUser = tg?.initDataUnsafe?.user;
 
   if (initUser && initUser.id) {
-    // Construct real Telegram avatar URL if photo_url is provided, or user initials avatar
     const initials = encodeURIComponent(
       `${initUser.first_name || 'P'} ${initUser.last_name || ''}`.trim()
     );
@@ -74,14 +73,32 @@ export function getCurrentUser(): User {
   };
 }
 
+export function getTelegramStartParam(): string | null {
+  const tg = getTelegramWebApp();
+  if (tg?.initDataUnsafe?.start_param) {
+    return tg.initDataUnsafe.start_param;
+  }
+  if (typeof window !== 'undefined') {
+    const urlParams = new URLSearchParams(window.location.search);
+    return (
+      urlParams.get('tgWebAppStartParam') ||
+      urlParams.get('startapp') ||
+      urlParams.get('start_param') ||
+      null
+    );
+  }
+  return null;
+}
+
 /**
  * Share Match Invite Deep Link to Telegram Chat
  */
 export function shareMatchInvite(matchId: string, title: string) {
   triggerHapticFeedback('medium');
   const botUsername = 'padle_tenis_bot';
+  // Standard format for Telegram Mini App startapp deep links
   const deepLink = `https://t.me/${botUsername}?startapp=match_${matchId}`;
-  const text = `🎾 Приєднуйтесь до турніру Падел Американка: "${title}"!\n\nПереходьте за посиланням у лобі гри:`;
+  const text = `🎾 Приєднуйтесь до мого лобі падел-турніру: "${title}"!\n\nНатискайте на посилання нижче, щоб увійти в лобі гри:`;
 
   const tg = getTelegramWebApp();
   const shareUrl = `https://t.me/share/url?url=${encodeURIComponent(deepLink)}&text=${encodeURIComponent(text)}`;

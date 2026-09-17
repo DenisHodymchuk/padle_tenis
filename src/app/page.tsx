@@ -8,7 +8,7 @@ import { MatchLobbyView } from '../components/MatchLobbyView';
 import { ActiveMatchView } from '../components/ActiveMatchView';
 import { MatchSummaryView } from '../components/MatchSummaryView';
 import { UserProfileView } from '../components/UserProfileView';
-import { initTelegramApp } from '../lib/telegram';
+import { initTelegramApp, getTelegramStartParam } from '../lib/telegram';
 import { ArrowLeft } from 'lucide-react';
 
 export default function Page() {
@@ -18,6 +18,7 @@ export default function Page() {
     companyPlayers,
     userMatches,
     createLobbyMatch,
+    joinMatchByDeepLink,
     addPlayerToLobby,
     startLobbyGame,
     updateCurrentRoundScore,
@@ -29,6 +30,16 @@ export default function Page() {
 
   useEffect(() => {
     initTelegramApp();
+    const startParam = getTelegramStartParam();
+    if (startParam && startParam.includes('match_')) {
+      joinMatchByDeepLink(startParam).then((match) => {
+        if (match) {
+          if (match.status === 'lobby') setView('lobby');
+          else if (match.status === 'in_progress') setView('active_match');
+          else if (match.status === 'completed') setView('summary');
+        }
+      });
+    }
   }, []);
 
   useEffect(() => {
