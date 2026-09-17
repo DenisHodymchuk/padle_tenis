@@ -1,9 +1,15 @@
 -- ================================================
--- PADEL AMERICANO TRACKER - SUPABASE DATABASE SCHEMA
+-- PADEL AMERICANO TRACKER - SUPABASE CLEAN SCHEMA
 -- ================================================
 
--- 1. Users Table (TEXT primary key to support Telegram string IDs)
-CREATE TABLE IF NOT EXISTS public.users (
+-- Drop existing tables to avoid type mismatch constraints
+DROP TABLE IF EXISTS public.rounds CASCADE;
+DROP TABLE IF EXISTS public.match_participants CASCADE;
+DROP TABLE IF EXISTS public.matches CASCADE;
+DROP TABLE IF EXISTS public.users CASCADE;
+
+-- 1. Users Table
+CREATE TABLE public.users (
     id TEXT PRIMARY KEY,
     telegram_id BIGINT UNIQUE,
     first_name TEXT NOT NULL,
@@ -16,7 +22,7 @@ CREATE TABLE IF NOT EXISTS public.users (
 );
 
 -- 2. Matches Table
-CREATE TABLE IF NOT EXISTS public.matches (
+CREATE TABLE public.matches (
     id TEXT PRIMARY KEY,
     creator_id TEXT,
     title TEXT NOT NULL,
@@ -27,7 +33,7 @@ CREATE TABLE IF NOT EXISTS public.matches (
 );
 
 -- 3. Match Participants Table
-CREATE TABLE IF NOT EXISTS public.match_participants (
+CREATE TABLE public.match_participants (
     id TEXT PRIMARY KEY,
     match_id TEXT NOT NULL,
     user_id TEXT NOT NULL,
@@ -39,7 +45,7 @@ CREATE TABLE IF NOT EXISTS public.match_participants (
 );
 
 -- 4. Rounds Table
-CREATE TABLE IF NOT EXISTS public.rounds (
+CREATE TABLE public.rounds (
     id TEXT PRIMARY KEY,
     match_id TEXT NOT NULL,
     round_number INT NOT NULL,
