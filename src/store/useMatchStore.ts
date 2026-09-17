@@ -251,21 +251,34 @@ export function useMatchStore() {
    * Handle joining a match via Deep Link (from Telegram start_param)
    */
   const joinMatchByDeepLink = async (startParam: string): Promise<Match | null> => {
-    const cleanId = startParam.replace(/^match_/, '').trim();
-    if (!cleanId) return null;
+    const rawId = startParam.replace(/^(match_|match-)+/, '').trim();
+    if (!rawId) return null;
+
+    const matchIdHyphen = `match-${rawId}`;
+    const matchIdUnderscore = `match_${rawId}`;
 
     // Check if match is already loaded in local state
-    let targetMatch = currentMatch?.id === cleanId ? currentMatch : null;
+    let targetMatch =
+      currentMatch?.id === matchIdHyphen ||
+      currentMatch?.id === matchIdUnderscore ||
+      currentMatch?.id === rawId
+        ? currentMatch
+        : null;
 
     // If not local, try fetching from Supabase
     if (!targetMatch && isSupabaseConfigured && supabase) {
       try {
-        const { data: matchData } = await supabase.from('matches').select('*').eq('id', cleanId).single();
+        const { data: matchData } = await supabase
+          .from('matches')
+          .select('*')
+          .or(`id.eq.${matchIdHyphen},id.eq.${matchIdUnderscore},id.eq.${rawId}`)
+          .maybeSingle();
+
         if (matchData) {
           const { data: partsData } = await supabase
             .from('match_participants')
             .select('*, users(*)')
-            .eq('match_id', cleanId);
+            .eq('match_id', matchData.id);
 
           const participants: MatchParticipant[] = (partsData || []).map((p: any) => ({
             id: p.id,

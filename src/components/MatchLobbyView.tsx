@@ -2,8 +2,8 @@
 
 import React, { useState } from 'react';
 import { Match, User } from '../types/padel';
-import { Share2, Play, Users, Check, UserPlus } from 'lucide-react';
-import { shareMatchInvite, triggerHapticFeedback } from '../lib/telegram';
+import { Share2, Play, Users, Check, UserPlus, Copy, CheckCircle2 } from 'lucide-react';
+import { shareMatchInvite, copyMatchInviteLink, triggerHapticFeedback } from '../lib/telegram';
 
 interface MatchLobbyViewProps {
   match: Match;
@@ -23,6 +23,7 @@ export const MatchLobbyView: React.FC<MatchLobbyViewProps> = ({
   onBackToHome,
 }) => {
   const [showAddModal, setShowAddModal] = useState(false);
+  const [copiedToast, setCopiedToast] = useState(false);
 
   const playerCount = match.participants.length;
   const canStart = playerCount >= 4 && playerCount <= 7;
@@ -50,26 +51,49 @@ export const MatchLobbyView: React.FC<MatchLobbyViewProps> = ({
         </p>
 
         {/* Action Buttons: Share & Invite */}
-        <div className="grid grid-cols-2 gap-2">
+        <div className="grid grid-cols-2 gap-2 mb-2">
           <button
             onClick={() => shareMatchInvite(match.id, match.title)}
-            className="w-full neon-glow-btn py-3 px-3 rounded-xl font-extrabold text-xs flex items-center justify-center gap-1.5 uppercase tracking-wider"
+            className="w-full neon-glow-btn py-3 px-2 rounded-xl font-extrabold text-xs flex items-center justify-center gap-1.5 uppercase tracking-wider"
           >
             <Share2 className="w-4 h-4 text-black" />
             Запросити в чат
           </button>
 
           <button
-            onClick={() => {
-              setShowAddModal(true);
-              triggerHapticFeedback('light');
+            onClick={async () => {
+              const copied = await copyMatchInviteLink(match.id);
+              if (copied) {
+                setCopiedToast(true);
+                setTimeout(() => setCopiedToast(false), 2500);
+              }
             }}
-            className="w-full bg-slate-800 hover:bg-slate-700 text-slate-200 py-3 px-3 rounded-xl font-bold text-xs flex items-center justify-center gap-1.5 border border-slate-700 shadow-md"
+            className="w-full bg-slate-800 hover:bg-slate-700 text-slate-200 py-3 px-2 rounded-xl font-bold text-xs flex items-center justify-center gap-1.5 border border-slate-700 shadow-md transition-all active:scale-95"
           >
-            <UserPlus className="w-4 h-4 text-[#ccff00]" />
-            Додати з бази
+            {copiedToast ? (
+              <>
+                <CheckCircle2 className="w-4 h-4 text-[#ccff00]" />
+                <span className="text-[#ccff00]">Скопійовано!</span>
+              </>
+            ) : (
+              <>
+                <Copy className="w-4 h-4 text-[#ccff00]" />
+                Скопіювати лінк
+              </>
+            )}
           </button>
         </div>
+
+        <button
+          onClick={() => {
+            setShowAddModal(true);
+            triggerHapticFeedback('light');
+          }}
+          className="w-full bg-slate-900/90 hover:bg-slate-800 text-slate-300 py-2.5 px-3 rounded-xl font-bold text-xs flex items-center justify-center gap-2 border border-slate-800 shadow-inner"
+        >
+          <UserPlus className="w-4 h-4 text-slate-400" />
+          Додати гравця з бази компанії
+        </button>
       </div>
 
       {/* PARTICIPANTS LIST */}

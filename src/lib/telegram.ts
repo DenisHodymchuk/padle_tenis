@@ -84,6 +84,7 @@ export function getTelegramStartParam(): string | null {
       urlParams.get('tgWebAppStartParam') ||
       urlParams.get('startapp') ||
       urlParams.get('start_param') ||
+      urlParams.get('start') ||
       null
     );
   }
@@ -91,13 +92,20 @@ export function getTelegramStartParam(): string | null {
 }
 
 /**
+ * Get formatted deep link for a match invite
+ */
+export function getMatchInviteLink(matchId: string): string {
+  const botUsername = 'padle_tenis_bot';
+  const cleanId = matchId.replace(/^(match_|match-)+/, '').trim();
+  return `https://t.me/${botUsername}?start=match_${cleanId}`;
+}
+
+/**
  * Share Match Invite Deep Link to Telegram Chat
  */
 export function shareMatchInvite(matchId: string, title: string) {
   triggerHapticFeedback('medium');
-  const botUsername = 'padle_tenis_bot';
-  // Standard format for Telegram Mini App startapp deep links
-  const deepLink = `https://t.me/${botUsername}?startapp=match_${matchId}`;
+  const deepLink = getMatchInviteLink(matchId);
   const text = `🎾 Приєднуйтесь до мого лобі падел-турніру: "${title}"!\n\nНатискайте на посилання нижче, щоб увійти в лобі гри:`;
 
   const tg = getTelegramWebApp();
@@ -108,4 +116,21 @@ export function shareMatchInvite(matchId: string, title: string) {
   } else if (typeof window !== 'undefined') {
     window.open(shareUrl, '_blank');
   }
+}
+
+/**
+ * Copy Match Invite Link to Clipboard
+ */
+export async function copyMatchInviteLink(matchId: string): Promise<boolean> {
+  triggerHapticFeedback('medium');
+  const deepLink = getMatchInviteLink(matchId);
+  try {
+    if (typeof navigator !== 'undefined' && navigator.clipboard) {
+      await navigator.clipboard.writeText(deepLink);
+      return true;
+    }
+  } catch (e) {
+    console.warn('Clipboard write failed:', e);
+  }
+  return false;
 }
