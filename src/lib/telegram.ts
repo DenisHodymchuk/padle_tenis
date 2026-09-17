@@ -2,18 +2,6 @@
 
 import { User } from '../types/padel';
 
-// Mock user for local web browser testing outside Telegram Mini App
-export const MOCK_TELEGRAM_USER: User = {
-  id: 'u-tg-me',
-  telegram_id: 777000111,
-  first_name: 'Олександр',
-  last_name: 'Падельний',
-  username: 'padel_pro_ua',
-  avatar_url: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80',
-  total_matches_played: 14,
-  global_average_score: 18.4,
-};
-
 export function getTelegramWebApp() {
   if (typeof window !== 'undefined' && (window as any).Telegram?.WebApp) {
     return (window as any).Telegram.WebApp;
@@ -45,7 +33,7 @@ export function triggerHapticFeedback(type: 'light' | 'medium' | 'heavy' | 'succ
         tg.HapticFeedback.notificationOccurred(type as 'success' | 'warning' | 'error');
       }
     } catch (e) {
-      console.warn('Haptic feedback non-critical failure', e);
+      console.warn('Haptic feedback error:', e);
     }
   }
 }
@@ -54,18 +42,53 @@ export function getCurrentUser(): User {
   const tg = getTelegramWebApp();
   const initUser = tg?.initDataUnsafe?.user;
 
-  if (initUser) {
+  if (initUser && initUser.id) {
+    // Construct real Telegram avatar URL if photo_url is provided, or user initials avatar
+    const initials = encodeURIComponent(
+      `${initUser.first_name || 'P'} ${initUser.last_name || ''}`.trim()
+    );
+    const fallbackAvatar = `https://ui-avatars.com/api/?name=${initials}&background=ccff00&color=000000&font-size=0.4`;
+
     return {
       id: `u-tg-${initUser.id}`,
       telegram_id: initUser.id,
       first_name: initUser.first_name || 'Гравець',
-      last_name: initUser.last_name,
-      username: initUser.username,
-      avatar_url: initUser.photo_url || MOCK_TELEGRAM_USER.avatar_url,
-      total_matches_played: 12,
-      global_average_score: 17.8,
+      last_name: initUser.last_name || '',
+      username: initUser.username || '',
+      avatar_url: initUser.photo_url || fallbackAvatar,
+      total_matches_played: 0,
+      global_average_score: 0,
     };
   }
 
-  return MOCK_TELEGRAM_USER;
+  // Fallback for browser dev mode
+  return {
+    id: 'u-tg-local',
+    telegram_id: 1001,
+    first_name: 'Гравець Падел',
+    last_name: '',
+    username: 'padel_player',
+    avatar_url: 'https://ui-avatars.com/api/?name=Padel+Player&background=ccff00&color=000000',
+    total_matches_played: 0,
+    global_average_score: 0,
+  };
+}
+
+/**
+ * Share Match Invite Deep Link to Telegram Chat
+ */
+export function shareMatchInvite(matchId: string, title: string) {
+  triggerHapticFeedback('medium');
+  const botUsername = 'padle_tenis_bot';
+  const deepLink = `https://t.me/${botUsername}?startapp=match_${matchId}`;
+  const text = `🎾 Приєднуйтесь до турніру Падел Американка: "${title}"!\n\nПереходьте за посиланням у лобі гри:`;
+
+  const tg = getTelegramWebApp();
+  const shareUrl = `https://t.me/share/url?url=${encodeURIComponent(deepLink)}&text=${encodeURIComponent(text)}`;
+
+  if (tg?.openTelegramLink) {
+    tg.openTelegramLink(shareUrl);
+  } else if (typeof window !== 'undefined') {
+    window.open(shareUrl, '_blank');
+  }
 }

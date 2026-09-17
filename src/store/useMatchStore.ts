@@ -1,8 +1,8 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Match, User, MatchStatus } from '../types/padel';
-import { createInitialDemoMatch, SAMPLE_PLAYERS } from '../lib/mockData';
+import { Match, User, MatchStatus, MatchParticipant } from '../types/padel';
+import { SAMPLE_PLAYERS } from '../lib/mockData';
 import { generateAmericanoSchedule, recalculateLeaderboard } from '../lib/americanoLogic';
 import { getCurrentUser, triggerHapticFeedback } from '../lib/telegram';
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
@@ -11,36 +11,38 @@ const STORAGE_KEY = 'padel_americano_current_match';
 
 export function useMatchStore() {
   const [currentMatch, setCurrentMatch] = useState<Match | null>(null);
-  const [currentUser, setCurrentUser] = useState<User>(SAMPLE_PLAYERS[0]);
+  const [currentUser, setCurrentUser] = useState<User>(getCurrentUser());
+  const [companyPlayers, setCompanyPlayers] = useState<User[]>(SAMPLE_PLAYERS);
+  const [userMatches, setUserMatches] = useState<Match[]>([]);
 
   useEffect(() => {
-    // Initialize currentUser from Telegram SDK
+    // 1. Initialize real currentUser from Telegram SDK
     const u = getCurrentUser();
     setCurrentUser(u);
 
-    // If Supabase is configured, sync user to database
+    // 2. If Supabase is configured, sync real user and fetch company players
     if (isSupabaseConfigured && supabase) {
       syncUserToSupabase(u);
+      fetchCompanyPlayers();
     }
 
-    // Load saved match from localStorage or Supabase
+    // 3. Load saved match from localStorage
     if (typeof window !== 'undefined') {
       const saved = localStorage.getItem(STORAGE_KEY);
       if (saved) {
         try {
-          setCurrentMatch(JSON.parse(saved));
+          const parsed: Match = JSON.parse(saved);
+          setCurrentMatch(parsed);
+          setUserMatches([parsed]);
+          return;
         } catch (e) {
           console.error('Failed to parse saved match:', e);
         }
-      } else {
-        const demo = createInitialDemoMatch(5, 32);
-        setCurrentMatch(demo);
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(demo));
       }
     }
   }, []);
 
-  // Supabase Realtime Score Synchronization
+  // Supabase Realtime Score & Lobby Synchronization
   useEffect(() => {
     if (!isSupabaseConfigured || !supabase || !currentMatch?.id) return;
 
@@ -48,9 +50,10 @@ export function useMatchStore() {
       .channel(`match:${currentMatch.id}`)
       .on(
         'postgres_changes',
-        { event: 'UPDATE', schema: 'public', table: 'rounds', filter: `match_id=eq.${currentMatch.id}` },
+        { event: '*', schema: 'public', table: 'rounds', filter: `match_id=eq.${currentMatch.id}` },
         (payload) => {
-          const updatedRound = payload.new;
+          const updatedRound = payload.new as any;
+          if (!updatedRound) return;
           setCurrentMatch((prev) => {
             if (!prev) return null;
             const rounds = prev.rounds.map((r) =>
@@ -80,17 +83,48 @@ export function useMatchStore() {
   }, [currentMatch?.id]);
 
   const syncUserToSupabase = async (user: User) => {
-    if (!supabase) return;
+    if (!supabase || !user.telegram_id) return;
     try {
-      await supabase.from('users').upsert({
+      const { data } = await supabase.from('users').upsert({
         telegram_id: user.telegram_id,
         first_name: user.first_name,
         last_name: user.last_name,
         username: user.username,
         avatar_url: user.avatar_url,
-      });
+      }).select().single();
+
+      if (data) {
+        setCurrentUser((prev) => ({
+          ...prev,
+          id: data.id,
+          total_matches_played: data.total_matches_played || 0,
+          global_average_score: Number(data.global_average_score) || 0,
+        }));
+      }
     } catch (err) {
       console.warn('Supabase sync user warning:', err);
+    }
+  };
+
+  const fetchCompanyPlayers = async () => {
+    if (!supabase) return;
+    try {
+      const { data } = await supabase.from('users').select('*').order('global_average_score', { ascending: false });
+      if (data && data.length > 0) {
+        const formatted: User[] = data.map((d: any) => ({
+          id: d.id,
+          telegram_id: d.telegram_id,
+          first_name: d.first_name,
+          last_name: d.last_name,
+          username: d.username,
+          avatar_url: d.avatar_url,
+          total_matches_played: d.total_matches_played || 0,
+          global_average_score: Number(d.global_average_score) || 0,
+        }));
+        setCompanyPlayers(formatted);
+      }
+    } catch (err) {
+      console.warn('Supabase fetch company players warning:', err);
     }
   };
 
@@ -99,63 +133,102 @@ export function useMatchStore() {
     if (typeof window !== 'undefined') {
       if (match) {
         localStorage.setItem(STORAGE_KEY, JSON.stringify(match));
+        setUserMatches((prev) => {
+          const exists = prev.some((m) => m.id === match.id);
+          return exists ? prev.map((m) => (m.id === match.id ? match : m)) : [match, ...prev];
+        });
       } else {
         localStorage.removeItem(STORAGE_KEY);
       }
     }
   };
 
-  const createMatch = (playerCount: number = 5, pointsPerRound: 13 | 24 | 32 = 32, title?: string) => {
-    const selectedPlayers = SAMPLE_PLAYERS.slice(0, playerCount);
+  const createLobbyMatch = (playerCount: number = 5, pointsPerRound: 13 | 24 | 32 = 32, title?: string) => {
     const matchId = `match-${Date.now()}`;
 
-    const participants = selectedPlayers.map((u, i) => ({
-      id: `part-${i + 1}-${Date.now()}`,
+    // Add current real user as first participant
+    const creatorParticipant: MatchParticipant = {
+      id: `part-1-${Date.now()}`,
       match_id: matchId,
-      user_id: u.id,
-      user: u,
+      user_id: currentUser.id,
+      user: currentUser,
       total_points: 0,
       rounds_played: 0,
       average_score: 0,
-    }));
+    };
 
-    const rounds = generateAmericanoSchedule(selectedPlayers, matchId, pointsPerRound);
+    // Fill remaining slots from available registered company players
+    const otherPlayers = companyPlayers.filter((p) => p.id !== currentUser.id).slice(0, playerCount - 1);
+    const initialParticipants: MatchParticipant[] = [
+      creatorParticipant,
+      ...otherPlayers.map((u, i) => ({
+        id: `part-${i + 2}-${Date.now()}`,
+        match_id: matchId,
+        user_id: u.id,
+        user: u,
+        total_points: 0,
+        rounds_played: 0,
+        average_score: 0,
+      })),
+    ];
 
     const newMatch: Match = {
       id: matchId,
       creator_id: currentUser.id,
       created_at: new Date().toISOString(),
       title: title || `Падел Американка (${playerCount} гравців)`,
-      status: 'in_progress',
+      status: 'lobby',
       points_per_round: pointsPerRound,
-      participants: recalculateLeaderboard(participants, rounds),
-      rounds,
+      participants: initialParticipants,
+      rounds: [],
       current_round_index: 0,
     };
 
     triggerHapticFeedback('success');
     saveMatch(newMatch);
-
-    // Save asynchronously to Supabase if configured
-    if (isSupabaseConfigured && supabase) {
-      saveMatchToSupabase(newMatch);
-    }
-
     return newMatch;
   };
 
-  const saveMatchToSupabase = async (match: Match) => {
-    if (!supabase) return;
-    try {
-      await supabase.from('matches').insert({
-        id: match.id,
-        title: match.title,
-        status: match.status,
-        points_per_round: match.points_per_round,
-      });
-    } catch (e) {
-      console.warn('Supabase save match warning:', e);
-    }
+  const addPlayerToLobby = (userToAdd: User) => {
+    if (!currentMatch) return;
+    const exists = currentMatch.participants.some((p) => p.user_id === userToAdd.id);
+    if (exists || currentMatch.participants.length >= 7) return;
+
+    const newParticipant: MatchParticipant = {
+      id: `part-${Date.now()}`,
+      match_id: currentMatch.id,
+      user_id: userToAdd.id,
+      user: userToAdd,
+      total_points: 0,
+      rounds_played: 0,
+      average_score: 0,
+    };
+
+    const updatedMatch: Match = {
+      ...currentMatch,
+      participants: [...currentMatch.participants, newParticipant],
+    };
+
+    triggerHapticFeedback('light');
+    saveMatch(updatedMatch);
+  };
+
+  const startLobbyGame = () => {
+    if (!currentMatch || currentMatch.participants.length < 4) return;
+
+    const activePlayers = currentMatch.participants.map((p) => p.user);
+    const rounds = generateAmericanoSchedule(activePlayers, currentMatch.id, currentMatch.points_per_round);
+
+    const updatedMatch: Match = {
+      ...currentMatch,
+      status: 'in_progress',
+      rounds,
+      current_round_index: 0,
+      participants: recalculateLeaderboard(currentMatch.participants, rounds),
+    };
+
+    triggerHapticFeedback('success');
+    saveMatch(updatedMatch);
   };
 
   const updateCurrentRoundScore = (t1Score: number) => {
@@ -186,7 +259,6 @@ export function useMatchStore() {
 
     saveMatch(updatedMatch);
 
-    // Broadcast score change to Supabase if configured
     if (isSupabaseConfigured && supabase && rounds[idx].id) {
       supabase.from('rounds').upsert({
         id: rounds[idx].id,
@@ -226,15 +298,6 @@ export function useMatchStore() {
     };
 
     saveMatch(updatedMatch);
-
-    if (isSupabaseConfigured && supabase) {
-      supabase.from('rounds').upsert({
-        id: rounds[idx].id,
-        status: 'finished',
-        t1_score: rounds[idx].t1_score,
-        t2_score: rounds[idx].t2_score,
-      }).then(() => {}).catch(() => {});
-    }
   };
 
   const resetMatch = () => {
@@ -244,7 +307,11 @@ export function useMatchStore() {
   return {
     currentMatch,
     currentUser,
-    createMatch,
+    companyPlayers,
+    userMatches,
+    createLobbyMatch,
+    addPlayerToLobby,
+    startLobbyGame,
     updateCurrentRoundScore,
     finishCurrentRound,
     resetMatch,
