@@ -139,8 +139,8 @@ export function useMatchStore() {
     };
   }, [currentMatch?.id]);
 
-  const syncUserToSupabase = async (user: User) => {
-    if (!supabase || !user.telegram_id) return;
+  const syncUserToSupabase = async (user: User): Promise<User> => {
+    if (!supabase || !user.telegram_id) return user;
     try {
       const { data } = await supabase.from('users').upsert({
         telegram_id: user.telegram_id,
@@ -148,19 +148,22 @@ export function useMatchStore() {
         last_name: user.last_name,
         username: user.username,
         avatar_url: user.avatar_url,
-      }).select().single();
+      }, { onConflict: 'telegram_id' }).select().single();
 
       if (data) {
-        setCurrentUser((prev) => ({
-          ...prev,
+        const updated: User = {
+          ...user,
           id: data.id,
           total_matches_played: data.total_matches_played || 0,
           global_average_score: Number(data.global_average_score) || 0,
-        }));
+        };
+        setCurrentUser(updated);
+        return updated;
       }
     } catch (err) {
       console.warn('Supabase sync user warning:', err);
     }
+    return user;
   };
 
   const fetchCompanyPlayers = async () => {
@@ -237,10 +240,12 @@ export function useMatchStore() {
         status: 'lobby',
         points_per_round: pointsPerRound,
       }).then(() => {
-        supabase.from('match_participants').insert({
-          match_id: matchId,
-          user_id: currentUser.id,
-        });
+        if (currentUser.id) {
+          supabase.from('match_participants').insert({
+            match_id: matchId,
+            user_id: currentUser.id,
+          });
+        }
       }).catch((err) => console.warn('Supabase match insert error:', err));
     }
 
@@ -251,6 +256,7 @@ export function useMatchStore() {
    * Handle joining a match via Deep Link (from Telegram start_param)
    */
   const joinMatchByDeepLink = async (startParam: string): Promise<Match | null> => {
+    const activeUser = await syncUserToSupabase(currentUser);
     const rawId = startParam.replace(/^(match_|match-)+/, '').trim();
     if (!rawId) return null;
 
@@ -285,14 +291,14 @@ export function useMatchStore() {
             match_id: p.match_id,
             user_id: p.user_id,
             user: {
-              id: p.users.id,
-              telegram_id: p.users.telegram_id,
-              first_name: p.users.first_name,
-              last_name: p.users.last_name,
-              username: p.users.username,
-              avatar_url: p.users.avatar_url,
-              total_matches_played: p.users.total_matches_played || 0,
-              global_average_score: Number(p.users.global_average_score) || 0,
+              id: p.users?.id || p.user_id,
+              telegram_id: p.users?.telegram_id,
+              first_name: p.users?.first_name || 'Учасник',
+              last_name: p.users?.last_name || '',
+              username: p.users?.username || '',
+              avatar_url: p.users?.avatar_url || 'https://ui-avatars.com/api/?name=Padel',
+              total_matches_played: p.users?.total_matches_played || 0,
+              global_average_score: Number(p.users?.global_average_score) || 0,
             },
             total_points: p.total_points || 0,
             rounds_played: p.rounds_played || 0,
@@ -321,15 +327,17 @@ export function useMatchStore() {
       targetMatch = currentMatch || createLobbyMatch(5, 32);
     }
 
-    // Check if currentUser is in participants list
-    const alreadyJoined = targetMatch.participants.some((p) => p.user_id === currentUser.id);
+    // Check if activeUser is in participants list
+    const alreadyJoined = targetMatch.participants.some(
+      (p) => p.user_id === activeUser.id || (activeUser.telegram_id && p.user.telegram_id === activeUser.telegram_id)
+    );
 
     if (!alreadyJoined && targetMatch.participants.length < 7) {
       const newParticipant: MatchParticipant = {
         id: `part-${Date.now()}`,
         match_id: targetMatch.id,
-        user_id: currentUser.id,
-        user: currentUser,
+        user_id: activeUser.id,
+        user: activeUser,
         total_points: 0,
         rounds_played: 0,
         average_score: 0,
@@ -341,11 +349,15 @@ export function useMatchStore() {
       };
 
       // Save to Supabase match_participants
-      if (isSupabaseConfigured && supabase && currentUser.id) {
-        supabase.from('match_participants').insert({
-          match_id: targetMatch.id,
-          user_id: currentUser.id,
-        }).then(() => {}).catch(() => {});
+      if (isSupabaseConfigured && supabase && activeUser.id) {
+        try {
+          await supabase.from('match_participants').insert({
+            match_id: targetMatch.id,
+            user_id: activeUser.id,
+          });
+        } catch (e) {
+          console.warn('Failed to insert match_participant into Supabase:', e);
+        }
       }
     }
 
